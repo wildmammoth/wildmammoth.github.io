@@ -1,0 +1,487 @@
+<!DOCTYPE HTML>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<title>Graph digitizing</title>
+		<style type="text/css">
+			* {
+				margin: 0px;
+				padding: 0px;
+				border: 0px;
+			}
+			canvas {
+				border: 3px dashed;
+				cursor: crosshair;
+			}
+			textarea {
+				width: 400px;
+				height: 280px;
+				resize: none;
+				border: 1px solid;
+			}
+			input {
+				margin: 10px;
+				border: 1px solid;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="firstPrompt" align="center">
+			<p>
+			Выберите файл, содержащий график
+			</p>
+		</div>
+		<div align="center">
+			<form id="frmChoosePlot" enctype="multipart/form-data" method="POST">
+				<input id = "iptLoadPlot" type = "file" accept="image/*">
+				Масштаб (от ширины страницы): 
+				<select id="sltScale">
+					<option value="1.0">100%</option>
+					<option value="0.9">90%</option>
+					<option value="0.8">80%</option>
+					<option value="0.7">70%</option>
+					<option value="0.6">60%</option>
+					<option value="0.5" selected>50%</option>
+					<option value="0.4">40%</option>
+					<option value="0.3">30%</option>
+					<option value="0.2">20%</option>
+					<option value="0.1">10%</option>
+				</select>
+			</form>
+		</div>
+		<div align="center">
+			<input id="txtCoordinates" type="text" placeholder="Show coordinates" size="40">
+			<input id="btnClear" type="button" border="1" value="Clear the canvas">
+		</div>
+		<div align="center">
+			<canvas id="mainCanvas" width="600" height="400" border="solid"> </canvas>
+		</div>
+		<p align="center">
+			Координаты точек:
+		</p>
+		<div align="center">
+
+			<textarea id="tarDotsOnPlot" type="textarea">
+			</textarea>
+
+		</div>
+
+		<script type="text/javascript">
+//[---Ссылки на элементы интерфейса---		
+			//Ссылка на div firstPrompt с подсказками пользователя в самом верху страницы
+			var promptDiv = document.getElementById("firstPrompt");
+			//Ссылка на input inpLoadPlot для загрузки графика
+			var loadPlot = document.getElementById("iptLoadPlot");
+			//Ссылка на select sltScale для выбора масштаба графика
+			var selectScale = document.getElementById("sltScale");
+			//Ссылка на input txtCoordinates для отображения координат точек в новой системе координат 
+			var newCoordinates = document.getElementById("txtCoordinates");	
+			//Ссылка на button btnClear для очистки canvas'а mainCanvas
+			var clearButton = document.getElementById("btnClear");			
+			//Ссылка на canvas mainCanvas
+			var canvas=document.getElementById('mainCanvas');
+			//Ссылка на textarea tarDotsOnPlot
+			var dotsOnPlot = document.getElementById("tarDotsOnPlot");
+//---Ссылки на элементы интерфейса---]			
+
+//[---Глобальные переменные---
+			//Переменная для организации UI
+			var mode = 0;
+//---Глобальные переменные---]
+//[---Выбор графического файла---
+			//Переменная, содержащая путь к файлу с графиком
+			var pathToTheGraph;
+			//Обработчик события изменения состояния input'а loadPlot
+			loadPlot.addEventListener("change", function(){
+				//Получение пути файла после нажатия кнопки input'а iptLoadPlot
+				pathToTheGraph = loadPlot.files[0];//.name;
+				//Отрисовка графика на canvas'е mainCanvas
+				drawGraph(pathToTheGraph, selectScale.value);
+				//Отчет об успешной загрузке графика
+				mode = 1;
+				//Изменение подсказки для пользователя
+				promptDiv.innerHTML = "Выберите точку, лежащую на оси абсцисс";
+			});
+//---Выбор графического файла---]
+
+//[---Выбор размера графика---
+			//Обработчик события изменения размера графика
+			selectScale.addEventListener("change", function(){
+				//Вывод сообщения о необходимости сначала выбрать файл с графиком
+				if (mode === 0){
+					alert("Загрузите график!");
+				//Если файл с графиком уже был выбран в input'е iptLoadPlot,
+				} else { 
+					//Происходит отрисовка графика в выбранном масштабе
+					drawGraph(pathToTheGraph, selectScale.value);
+					promptDiv.innerHTML = "Выберите точку, лежащую на оси абсцисс";
+				}
+			});
+//---Выбор размера графика---]
+
+//[---Отображение координаты точки в новой системе координат---
+   			//Обработчик события движения курсора над canvas'ом mainCanvas.
+   			//Начинает работать в том случае, если все реперные точки уже поставлены,
+   			//т.е. известны масштабные коэффициенты и координаты начала новой
+   			//системы координат в старой системе координат.
+   			var controlPoints = [];
+
+			//Переменная, содержащая угол наклона оси 0'X' по отношению к оси 0X
+			var alpha;
+			//Масштабные коэффициенты
+			var sc1, sc2;
+
+			canvas.addEventListener("mousemove", function(event){
+				var canvasCoord = getCanvasCoordinates(3);
+				var canvasEvent = createCanvasEvent(event, canvasCoord);
+				newCoordinates.value = canvasCoord.left + ";" + canvasCoord.top;
+				newCoordinates.value = canvasEvent.x + ";" + canvasEvent.y;
+				if (mode > 6) {
+					var newXY = coordinateChange(canvasEvent, controlPoints[11], sc1, sc2, alpha);
+					newCoordinates.value = newXY.x + ";" + newXY.y;
+				}
+			});
+//---Отображение координаты точки в новой системе координат---]
+
+//[---Очистка введенных значений
+			//Обработчик события для кнопки bntClear
+			clearButton.addEventListener("click", function(event) {
+				//Очистка canvas'a mainCanvas
+				clearMainCanvas();
+				//Создание заголовка в textarea tarDotsOnPlot
+				tarDotsOnPlot.value = "X\';Y\'\n";
+			});
+//---Очистка введенных значений---]
+
+//[---Взаимодействие с canvas'ом mainCanvas---
+			//Ссылка на содержимое canvas'а mainCanvas
+			var context = canvas.getContext('2d');
+			//Очистка canvas'a mainCanvas
+			clearMainCanvas();
+
+
+//Переменные для хранения коэффициентов уравнений реперных прямых
+			//Тангенсы углов наклона осей абсцисс и ординат новой системы координат соотвественно.
+			var k1, k2;
+			var newX3, newX4, newY5, newY6;
+			newX3 = 0.5;
+			newX4 = 0.7;
+			newY5 = 1.1;
+			newY6 = 1.3;
+
+			var controlLines = [];
+			//Обработчик события нажатия мыши на canvas mainCanvas
+			canvas.addEventListener("click", function(event){
+				//Переменная для хранения координат левого верхнего угла canvas'а mainCanvas в системе координат page
+				var canvasCoord = getCanvasCoordinates(3);
+				//Переменная для хранения координат текущей точки в системе координат canvas'а mainCanvas
+				var currentPoint = createCanvasEvent(event, canvasCoord);
+				switch (mode) {
+					//Клик по canvas'у mainCanvas до загрузки графика вызывает напоминание пользователю о необходимости загрузки графика
+					case 0:
+						alert("Загрузите график!");
+						break;
+					//В случае загрузки графика создается первая реперная точка для определения угла наклона оси абсцисс новой системы координат
+					case 1:
+						controlPoints[1] = currentPoint;
+						//Данная точка обозначается окружностью
+						drawCircle(controlPoints[1], 5, "#0f0");
+						//Переход к следующей точке
+						mode = 2;
+						promptDiv.innerHTML = "<p> Выберите еще одну точку, лежащую на оси абсцисс </p>";
+						break;
+					//Создание второй реперной точки для определения угла наклона оси абсцисс новой системы координат
+					case 2:
+						controlPoints[2] = currentPoint;
+						//Данная точка обозначается окружностью
+						drawCircle(controlPoints[2], 5, "#0f0");
+						//Определение тангенсов углов наклона осей новой системы координат
+						//Если первая и вторая точки совпадают, то ось абсцисс считается горизонтальной, а ось ординат - вертикальной
+						if (controlPoints[1].x === controlPoints[2].x && controlPoints[1].y === controlPoints[2].y){
+							k1 = 0;
+							k2 = Infinity;
+						} else {
+							//В противном случае определяем тангенс угла наклона оси абсцисс
+							k1 = (controlPoints[2].y - controlPoints[1].y) / (controlPoints[2].x - controlPoints[1].x);
+							switch (k1){
+								//Если ось абцисс горизонтальна, тогда ось ординат - вертикальна
+								case 0:
+									k2 = Infinity;
+									break;
+								//Если ось абцисс вертикальна, тогда ось ординат - горизонтальна.
+								case -Infinity:
+									k1 = Infinity;
+									k2 = 0;
+									break;
+								//Если ось абцисс вертикальна, тогда ось ординат - горизонтальна.
+								case Infinity:
+									k2 = 0;
+									break;
+								//В других случаях определяем тангенс угла наклона оси ординат таким образом, чтобы угол между осями был равен 90 градусом.
+								default:
+									k2 = -1.0 / k1;
+							}	
+						}
+						//Определение угла наклона оси абсцисс новой системы координат
+						alpha = Math.atan(k1);
+						//Отрисовка оси абсцисс новой системы координат
+						drawLineThroughOnePoint(controlPoints[2], k1, "#f00");
+						//Переход к следующей точке
+						mode = 3;
+						promptDiv.innerHTML = "<p> Выберите значение на оси абсцисс </p>";
+						break;
+					case 3:
+
+						controlPoints[3] = currentPoint;
+						drawCircle(controlPoints[3], 5, "#0f0");
+						drawLineThroughOnePoint(controlPoints[3], k2, "#f00");
+						controlLines["31"] = createLine(controlPoints[3], k1);
+						mode = 4;
+						promptDiv.innerHTML = "<p> Выберите еще одно значение на оси абсцисс </p>";
+						break;
+					case 4:
+						controlPoints[4] = currentPoint;
+						drawCircle(controlPoints[4], 5, "#0f0");
+						drawLineThroughOnePoint(controlPoints[4], k2, "#f00");
+						controlLines["42"] = createLine(controlPoints[4], k2);
+						controlPoints[7] = findCrossPoint(controlLines["31"], controlLines["42"]);
+
+						controlPoints[8] = findPointOnAxis(controlPoints[3], newX3, controlPoints[7], newX4);
+						controlLines["82"] = createLine(controlPoints[8], k2);
+						mode = 5;
+						promptDiv.innerHTML = "<p> Выберите значение на оси ординат </p>";
+						break;
+					case 5:
+						controlPoints[5] = currentPoint;
+						drawCircle(controlPoints[5], 5, "#0f0");
+						drawLineThroughOnePoint(controlPoints[5], k1, "#00f");
+						controlLines["51"] = createLine(controlPoints[5], k1);
+						mode = 6;
+						promptDiv.innerHTML = "<p> Выберите еще одно значение на оси абсцисс </p>";
+						break;	
+					case 6:
+						controlPoints[6] = currentPoint;
+						drawCircle(controlPoints[6], 5, "#0f0");
+						drawLineThroughOnePoint(controlPoints[6], k1, "#00f");
+						controlLines["61"] = createLine(controlPoints[6], k1);
+						controlLines["52"] = createLine(controlPoints[5], k2);
+						controlPoints[9] = findCrossPoint(controlLines["61"], controlLines["52"]);
+						controlPoints[10] = findPointOnAxis(controlPoints[5], newY5, controlPoints[9], newY6);
+						controlLines["101"] = createLine(controlPoints[10], k1);
+						controlPoints[11] = findCrossPoint(controlLines["101"], controlLines["82"]);
+						if (k1 === Infinity){
+							sc1 = (newX4 - newX3) / (controlPoints[7].y - controlPoints[3].y);
+							sc2 = (newY6 - newY5) / (controlPoints[9].x - controlPoints[5].x);
+						} else {
+							sc1 = Math.cos(alpha) * (newX4 - newX3) / (controlPoints[7].x - controlPoints[3].x);
+							sc2 = Math.cos(alpha) * (newY6 - newY5) / (controlPoints[5].y - controlPoints[9].y);
+						}
+						mode = 7;
+						promptDiv.innerHTML = "<p> Выберите точку на графике функции </p>";
+						break;	
+					default:
+						drawCircle(currentPoint, 5, "#0f0");
+						dotsOnPlot.value += (newCoordinates.value + "\n");		
+				}
+				
+			});
+//---Взаимодействие с canvas'ом mainCanvas---]
+
+//[---Вывод значений координат в новой системе координат на textarea tarDotsOnPlot---
+			//Создание заголовка в textarea tarDotsOnPlot
+			dotsOnPlot.value="X' ; Y'\n";
+//---Вывод значений координат в новой системе координат на textarea tarDotsOnPlot---]
+
+//[---Функции---
+
+			function getCanvasCoordinates(bound){
+				var box = canvas.getBoundingClientRect();
+				return {
+					top: box.top + window.pageYOffset + bound,
+					left: box.left + window.pageXOffset + bound
+				};
+
+			}
+
+			//Функция очистки canvas'а mainCanvas и заполнения его сеткой 
+			function clearMainCanvas(){
+				//Сброс исходного изображения
+				canvas.width = canvas.width;
+				//Отрисовка вертикальных линий сетки
+				for (var x = 0.5; x < canvas.width; x+=20){
+					drawLineThroughOnePoint(x, 0, Infinity, "#eee");
+				}
+				//Отрисовка горизонтальных линий сетки
+				for (var y = 0.5; y < canvas.height; y+=20){
+					drawLineThroughOnePoint(0, y, 0, "#eee");
+				}
+			}
+
+			//Функция отрисовки графического файла на canvas'е mainCanvas
+			function drawGraph(filePath, plotScale){
+				//Создание нового изображения
+				var imgGraph = new Image();
+				//Указание источника изображения
+				imgGraph.src = filePath;
+				//Получение ширины страницы
+				var pageWidth = document.body.offsetWidth;
+
+				var reader = new FileReader();
+
+				reader.onloadend = function(){
+					imgGraph.src = reader.result;
+				}
+
+				reader.readAsDataURL(filePath);
+				//Обработчик события загрузки изображения
+				//Габариты canvas'а mainCanvas изменяются таким образом, чтобы
+				//его ширина соответствовала ширине страницы, умноженной на масштабный
+				//коэффициент, а высота - чтобы не изменялись пропорции изображения.
+				imgGraph.onload = function(){
+					//Пересчет высоты canvas'а mainCanvas
+					canvas.height = Math.round(plotScale * imgGraph.height * pageWidth / imgGraph.width);
+					//Пересчет ширины canvas'а mainCanvas
+					canvas.width = Math.round(plotScale * pageWidth);
+					//Отрисовка изображения на canvas'е mainCanvas
+					context.drawImage(imgGraph, 0, 0, canvas.width, canvas.height);
+				}
+			}
+
+			//Функция пересчета координаты точки из системы координат page в систему координат canvas  
+			function getCanvasCoordinateFromPageCoordinate(coordinate, delta){
+				return coordinate - delta;
+			}
+
+			//Функция создания события получения координат клика на canvas'е mainCanvas в системе координат canvas'а mainCanvas.
+			function createCanvasEvent(e, canvasXY){
+				result = {};
+				result.x = getCanvasCoordinateFromPageCoordinate(e.pageX, canvasXY.left);
+				result.y = getCanvasCoordinateFromPageCoordinate(e.pageY, canvasXY.top);
+				return result;
+			}
+//!По сути эта функция ничего не делает.
+			//Функция создания контрольной точки на основании события.
+			//В данном случае в роли события будет выступать клик по canvas'у mainCanvas
+			function createControlPoint(e){
+				result = {};
+				result.x = e.x;
+				result.y = e.y;
+				return result;
+			}
+//!По сути эта функция ничего не делает.			
+
+			//Создание объекта line
+			//Линия в декартовых координатах задается уравнением y = k * x + b
+			//Создается объект для хранения коэффициентов k и b линии, которая проходит через точку point с координатами point.x и point.y
+			function createLine(point, k){
+				result = {};
+				result.k = k;
+				//В случае вертикальной прямой линия задается уравнением x = c 
+				if (k === Infinity){
+					result.b = point.x;
+				//Все остальные случаи	
+				} else {
+					result.b = point.y - k * point.x;
+				}
+				return result;
+			}
+
+			function findCrossPoint(line_1, line_2){
+				result = {};
+				if (line_1.k === line_2.k){
+					result.x = NaN;
+					result.y = NaN;
+				} else {
+					if (line_1.k === Infinity){
+						result.x = line_1.b;
+						result.y = line_2.k * result.x + line_2.b;
+					} else {
+						if (line_2.k === Infinity){
+							result.x = line_2.b;
+							result.y = line_1.k * result.x + line_1.b;
+						} else {
+							result.x = (line_2.b - line_1.b) / (line_1.k - line_2.k);
+							result.y = line_1.k * result.x + line_1.b;
+						}
+					}		
+				}
+				return result;
+			}
+
+			function findPointOnAxis(point1, newCoord1, point2, newCoord2){
+				result = {};
+				var sc = newCoord1 / (newCoord2 - newCoord1);
+				result.x = point1.x - (point2.x - point1.x) * sc;
+				result.y = point1.y - (point2.y - point1.y) * sc;
+				return result;
+			}
+
+			function coordinateChange(e, point_0, sc_1, sc_2, phi){
+				var result = {};
+				if (phi === Math.PI / 2.0) {
+					result.x = (e.y - point_0.y) * sc_1;
+					result.y = (e.x - point_0.x) * sc_2;
+				} else {
+					result.x = ((e.x - point_0.x) * Math.cos(phi) + (e.y - point_0.y) * Math.sin(phi)) * sc_1;
+					result.y = ((point_0.y - e.y) * Math.cos(phi) - (e.x - point_0.x) * Math.sin(-phi)) * sc_2;					
+				}
+				return result;
+			}
+
+			//Функция отрисовки линии, проходящей через одну точку с заданным углом наклона
+			function drawLineThroughOnePoint(point, k, lineColor){
+				//Установка цвета линии
+				context.strokeStyle = lineColor;
+				context.beginPath();
+				switch(k){
+					//Вертикальная линия
+					case Infinity:
+						var h = canvas.height;
+						context.moveTo(point.x, 0);
+						context.lineTo(point.x, h);
+						break;
+					//Горизонтальная линия
+					case 0:
+						var l = canvas.width;
+						context.moveTo(0, point.y);
+						context.lineTo(l, point.y);
+						break;
+					//Линия под произвольным углом
+					default:
+						var b = point.y - k * point.x;
+						var h = canvas.height;
+						context.moveTo(-b / k, 0);
+						context.lineTo((h - b) / k, h);
+				}
+				//Отрисовка линии
+				context.stroke();
+			}
+
+			//Функция отрисоки линии, проходящей через две точки
+			function drawLineThroughTwoPoints(x_1, y_1, x_2, y_2, lineColor){
+				//Установка цвета линии
+				context.strokeStyle = lineColor; //"#f00"
+				context.beginPath();
+				context.moveTo(x_1, y_1);
+				context.lineTo(x_2, y_2);
+				//Отрисовка линии
+				context.stroke();
+			}
+
+			//Функция отрисовки окружности заданного радиуса
+			function drawCircle(point, r, circleColor){
+				//Установка цвета линии
+				context.strokeStyle = circleColor;
+				context.beginPath();
+				context.arc(point.x, point.y, r, 0, 2.0 * Math.PI, false);
+				//Отрисовка линии
+				context.stroke();
+			}
+
+
+
+//---Функции---]
+
+		</script> 
+	</body>
+</html>
